@@ -1,0 +1,58 @@
+static_resources:
+  clusters:
+  - name: upstream
+    connect_timeout: 10s
+    lb_policy: CLUSTER_PROVIDED
+    type: ORIGINAL_DST
+  listeners:
+  - address:
+      socketAddress:
+        address: 0.0.0.0
+        portValue: 15006
+    filterChains:
+    name: virtualInbound
+    trafficDirection: INBOUND
+    filterChains:
+    - filterChainMatch:
+        destinationPort: 8080
+        transportProtocol: raw_buffer
+      filters:
+        #- name: istio.metadata_exchange
+        #typedConfig:
+        #  '@type': type.googleapis.com/envoy.tcp.metadataexchange.config.MetadataExchange
+        #  protocol: istio-peer-exchange
+      - name: envoy.filters.network.http_connection_manager
+        typedConfig:
+          '@type': type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          use_remote_address: true
+          skip_xff_append: false
+          httpFilters:
+          - name: envoy.filters.http.router
+            typedConfig:
+              '@type': type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+          routeConfig:
+            name: local-upstream
+            validateClusters: false
+            virtualHosts:
+            - domains:
+              - '*'
+              name: local-upstream
+              routes:
+              - match:
+                  prefix: /
+                route:
+                  cluster: upstream
+          statPrefix: upstream_inbound
+    listenerFilters:
+    - name: envoy.filters.listener.original_dst
+      typedConfig:
+        '@type': type.googleapis.com/envoy.extensions.filters.listener.original_dst.v3.OriginalDst
+    - name: envoy.filters.listener.original_src
+      typedConfig:
+        '@type': type.googleapis.com/envoy.extensions.filters.listener.original_src.v3.OriginalSrc
+        mark: 1337
+admin:
+  address:
+    socket_address:
+      address: 0.0.0.0
+      port_value: 9901

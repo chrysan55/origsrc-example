@@ -1,0 +1,36 @@
+version: "3.8"
+services:
+  upstream-server:
+    image: nginx:latest
+    privileged: true
+    volumes:
+      - ./nginx-echo-client.conf:/etc/nginx/conf.d/echo-client.conf
+    ports:
+      - "54321:8080"
+      - "9901:9901"
+  envoy:
+    image: envoyproxy/envoy-dev:latest
+    privileged: true
+    user: root:envoy
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - ./transparent-envoy.yaml:/etc/transparent-envoy.yaml
+    network_mode: service:upstream-server
+    environment:
+      ENVOY_UID: 0
+    command: ["-c", "/etc/transparent-envoy.yaml", "--service-cluster", "echo", "--log-level", "debug"]
+  init:
+    image: linuxkit/ip:6cc44dd4e18ddb02de01bc4b34b5799971b6a7bf
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - ./redirect.rules:/redirect.rules
+    command: bash -c "iptables-legacy-restore < /redirect.rules && ip route add local 0.0.0.0/0 dev lo table 100 && ip rule add fwmark 1337 lookup 100"
+    network_mode: service:upstream-server
+  tcpdump:
+    image: corfr/tcpdump:latest
+    network_mode: service:upstream-server
